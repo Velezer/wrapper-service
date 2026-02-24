@@ -5,8 +5,8 @@ use tokio::process::Command;
 use tokio::time::{timeout, Duration};
 
 pub struct BridgeConfig {
-    bridge_cmd: String,
-    timeout_ms: u64,
+    pub bridge_cmd: String,
+    pub timeout_ms: u64,
 }
 
 impl BridgeConfig {
