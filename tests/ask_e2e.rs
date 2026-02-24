@@ -29,6 +29,7 @@ fn build_test_app(backend_url: &str) -> Router {
         chatgpt_backend_url: backend_url.to_string(),
         chatgpt_model: "auto".to_string(),
         timeout_ms: 5_000,
+        chatgpt_browser_cmd: "python3 scripts/chatgpt_browser_bridge.py".to_string(),
     }))
 }
 
