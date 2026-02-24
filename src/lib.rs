@@ -1,10 +1,8 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
+use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, COOKIE, ORIGIN, REFERER, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::{env, sync::Arc};
-use tokio::{
-    process::Command,
-    time::{timeout, Duration},
-};
+use tokio::time::{timeout, Duration};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -90,43 +88,59 @@ async fn ask_via_bridge(prompt: &str, state: &AppState) -> Result<String, String
         return Err("GPT integration missing: set CHATGPT_SESSION_COOKIE copied from your logged-in chatgpt.com browser session".to_string());
     }
 
-    let escaped_prompt = json_escape(prompt);
-    let model = json_escape(&state.chatgpt_model);
-    let payload = format!(
-        "{{\"action\":\"next\",\"messages\":[{{\"id\":\"msg-1\",\"author\":{{\"role\":\"user\"}},\"content\":{{\"content_type\":\"text\",\"parts\":[\"{escaped_prompt}\"]}}}}],\"parent_message_id\":\"msg-0\",\"model\":\"{model}\",\"history_and_training_disabled\":true}}"
-    );
+    let payload = serde_json::json!({
+        "action": "next",
+        "messages": [
+            {
+                "id": "msg-1",
+                "author": { "role": "user" },
+                "content": {
+                    "content_type": "text",
+                    "parts": [prompt]
+                }
+            }
+        ],
+        "parent_message_id": "msg-0",
+        "model": state.chatgpt_model,
+        "history_and_training_disabled": true
+    });
 
-    let command = format!(
-        "curl -sS -N '{}' \\\n          -H 'content-type: application/json' \\\n          -H 'origin: https://chatgpt.com' \\\n          -H 'referer: https://chatgpt.com/' \\\n          -H 'user-agent: Mozilla/5.0' \\\n          -H 'cookie: {}' \\\n          --data-raw '{}'",
-        state.chatgpt_backend_url,
-        shell_escape_single_quotes(&state.chatgpt_session_cookie),
-        shell_escape_single_quotes(&payload)
-    );
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    headers.insert(ORIGIN, HeaderValue::from_static("https://chatgpt.com"));
+    headers.insert(REFERER, HeaderValue::from_static("https://chatgpt.com/"));
+    headers.insert(USER_AGENT, HeaderValue::from_static("Mozilla/5.0"));
 
-    let fut = Command::new("bash").arg("-lc").arg(command).output();
-    let output = timeout(Duration::from_millis(state.timeout_ms), fut)
+    let cookie_value = HeaderValue::from_str(&state.chatgpt_session_cookie)
+        .map_err(|e| format!("Invalid CHATGPT_SESSION_COOKIE header value: {e}"))?;
+    headers.insert(COOKIE, cookie_value);
+
+    let client = reqwest::Client::new();
+    let fut = client
+        .post(&state.chatgpt_backend_url)
+        .headers(headers)
+        .json(&payload)
+        .send();
+
+    let response = timeout(Duration::from_millis(state.timeout_ms), fut)
         .await
         .map_err(|_| "ChatGPT web request timeout".to_string())
-        .and_then(|res| res.map_err(|e| format!("Failed to launch curl: {e}")))?;
+        .and_then(|res| res.map_err(|e| format!("Failed to send ChatGPT request: {e}")))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(format!("ChatGPT web request failed: {stderr}"));
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<unable to read response body>".to_string());
+        return Err(format!("ChatGPT web request failed ({status}): {body}"));
     }
 
-    let body = String::from_utf8_lossy(&output.stdout).to_string();
+    let body = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read ChatGPT response body: {e}"))?;
     parse_sse_answer(&body).ok_or_else(|| "ChatGPT response did not contain an answer".to_string())
-}
-
-fn json_escape(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-}
-
-fn shell_escape_single_quotes(s: &str) -> String {
-    s.replace("'", "'\\''")
 }
 
 fn parse_sse_answer(raw_response: &str) -> Option<String> {

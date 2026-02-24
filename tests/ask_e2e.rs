@@ -11,7 +11,9 @@ async fn mock_chatgpt() -> &'static str {
 
 async fn spawn_mock_chatgpt_server() -> String {
     let app = Router::new().route("/backend-api/conversation", post(mock_chatgpt));
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .unwrap();
     let addr = listener.local_addr().unwrap();
 
     tokio::spawn(async move {
