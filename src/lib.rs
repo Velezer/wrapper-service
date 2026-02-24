@@ -1,7 +1,7 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, COOKIE, ORIGIN, REFERER, USER_AGENT};
 use serde::{Deserialize, Serialize};
-use std::{env, sync::Arc};
+use std::{env, process::Stdio, sync::Arc};
 use tokio::time::{timeout, Duration};
 
 #[derive(Clone)]
@@ -10,6 +10,7 @@ pub struct AppState {
     pub chatgpt_backend_url: String,
     pub chatgpt_model: String,
     pub timeout_ms: u64,
+    pub chatgpt_browser_cmd: String,
 }
 
 #[derive(Deserialize)]
@@ -37,6 +38,8 @@ pub fn app_state_from_env() -> Arc<AppState> {
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(20_000),
+        chatgpt_browser_cmd: env::var("CHATGPT_BROWSER_CMD")
+            .unwrap_or_else(|_| "python3 scripts/chatgpt_browser_bridge.py".to_string()),
     })
 }
 
@@ -77,17 +80,21 @@ async fn ask(
             .into_response();
     }
 
-    match ask_via_bridge(prompt, &state).await {
+    match ask_llm(prompt, &state).await {
         Ok(answer) => (StatusCode::OK, Json(AskResponse { answer })).into_response(),
         Err(error) => (StatusCode::BAD_GATEWAY, Json(ErrorResponse { error })).into_response(),
     }
 }
 
-async fn ask_via_bridge(prompt: &str, state: &AppState) -> Result<String, String> {
-    if state.chatgpt_session_cookie.is_empty() {
-        return Err("GPT integration missing: set CHATGPT_SESSION_COOKIE copied from your logged-in chatgpt.com browser session".to_string());
+async fn ask_llm(prompt: &str, state: &AppState) -> Result<String, String> {
+    if !state.chatgpt_session_cookie.is_empty() {
+        return ask_via_chatgpt_web(prompt, state).await;
     }
 
+    ask_via_browser(prompt, state).await
+}
+
+async fn ask_via_chatgpt_web(prompt: &str, state: &AppState) -> Result<String, String> {
     let payload = serde_json::json!({
         "action": "next",
         "messages": [
@@ -141,6 +148,43 @@ async fn ask_via_bridge(prompt: &str, state: &AppState) -> Result<String, String
         .await
         .map_err(|e| format!("Failed to read ChatGPT response body: {e}"))?;
     parse_sse_answer(&body).ok_or_else(|| "ChatGPT response did not contain an answer".to_string())
+}
+
+async fn ask_via_browser(prompt: &str, state: &AppState) -> Result<String, String> {
+    let output = timeout(
+        Duration::from_millis(state.timeout_ms),
+        tokio::process::Command::new("sh")
+            .arg("-lc")
+            .arg(&state.chatgpt_browser_cmd)
+            .env("CHATGPT_PROMPT", prompt)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output(),
+    )
+    .await
+    .map_err(|_| "ChatGPT browser automation timeout".to_string())
+    .and_then(|res| res.map_err(|e| format!("Failed to start browser automation command: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let message = if stderr.is_empty() {
+            format!(
+                "Browser automation command failed with status {}",
+                output.status
+            )
+        } else {
+            format!("Browser automation command failed: {stderr}")
+        };
+        return Err(message);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let answer = stdout.trim();
+    if answer.is_empty() {
+        return Err("Browser automation did not return an answer".to_string());
+    }
+
+    Ok(answer.to_string())
 }
 
 fn parse_sse_answer(raw_response: &str) -> Option<String> {
