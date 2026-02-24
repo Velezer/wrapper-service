@@ -8,7 +8,9 @@ use tokio::{
 
 #[derive(Clone)]
 pub struct AppState {
-    pub bridge_cmd: String,
+    pub chatgpt_session_cookie: String,
+    pub chatgpt_backend_url: String,
+    pub chatgpt_model: String,
     pub timeout_ms: u64,
 }
 
@@ -29,7 +31,10 @@ struct ErrorResponse {
 
 pub fn app_state_from_env() -> Arc<AppState> {
     Arc::new(AppState {
-        bridge_cmd: env::var("GPT_BRIDGE_CMD").unwrap_or_default(),
+        chatgpt_session_cookie: env::var("CHATGPT_SESSION_COOKIE").unwrap_or_default(),
+        chatgpt_backend_url: env::var("CHATGPT_BACKEND_URL")
+            .unwrap_or_else(|_| "https://chatgpt.com/backend-api/conversation".to_string()),
+        chatgpt_model: env::var("CHATGPT_MODEL").unwrap_or_else(|_| "auto".to_string()),
         timeout_ms: env::var("GPT_TIMEOUT_MS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
@@ -81,39 +86,75 @@ async fn ask(
 }
 
 async fn ask_via_bridge(prompt: &str, state: &AppState) -> Result<String, String> {
-    if state.bridge_cmd.is_empty() {
-        return Err("GPT integration missing: set GPT_BRIDGE_CMD to a command that reads prompt from argv[1] and prints the answer to stdout".to_string());
+    if state.chatgpt_session_cookie.is_empty() {
+        return Err("GPT integration missing: set CHATGPT_SESSION_COOKIE copied from your logged-in chatgpt.com browser session".to_string());
     }
 
-    let cmd = state.bridge_cmd.clone();
-    let fut = Command::new("bash")
-        .arg("-lc")
-        .arg(cmd)
-        .arg("--")
-        .arg(prompt)
-        .output();
+    let escaped_prompt = json_escape(prompt);
+    let model = json_escape(&state.chatgpt_model);
+    let payload = format!(
+        "{{\"action\":\"next\",\"messages\":[{{\"id\":\"msg-1\",\"author\":{{\"role\":\"user\"}},\"content\":{{\"content_type\":\"text\",\"parts\":[\"{escaped_prompt}\"]}}}}],\"parent_message_id\":\"msg-0\",\"model\":\"{model}\",\"history_and_training_disabled\":true}}"
+    );
 
+    let command = format!(
+        "curl -sS -N '{}' \\\n          -H 'content-type: application/json' \\\n          -H 'origin: https://chatgpt.com' \\\n          -H 'referer: https://chatgpt.com/' \\\n          -H 'user-agent: Mozilla/5.0' \\\n          -H 'cookie: {}' \\\n          --data-raw '{}'",
+        state.chatgpt_backend_url,
+        shell_escape_single_quotes(&state.chatgpt_session_cookie),
+        shell_escape_single_quotes(&payload)
+    );
+
+    let fut = Command::new("bash").arg("-lc").arg(command).output();
     let output = timeout(Duration::from_millis(state.timeout_ms), fut)
         .await
-        .map_err(|_| "GPT bridge timeout".to_string())
-        .and_then(|res| res.map_err(|e| format!("GPT bridge failed to start: {e}")))?;
+        .map_err(|_| "ChatGPT web request timeout".to_string())
+        .and_then(|res| res.map_err(|e| format!("Failed to launch curl: {e}")))?;
 
     if !output.status.success() {
-        let status = output
-            .status
-            .code()
-            .map(|c| c.to_string())
-            .unwrap_or_else(|| "unknown".to_string());
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(format!("GPT bridge exited with status {status}: {stderr}"));
+        return Err(format!("ChatGPT web request failed: {stderr}"));
     }
 
-    let answer = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if answer.is_empty() {
-        return Err("GPT bridge returned empty output".to_string());
-    }
+    let body = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_sse_answer(&body).ok_or_else(|| "ChatGPT response did not contain an answer".to_string())
+}
 
-    Ok(answer)
+fn json_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+}
+
+fn shell_escape_single_quotes(s: &str) -> String {
+    s.replace("'", "'\\''")
+}
+
+fn parse_sse_answer(raw_response: &str) -> Option<String> {
+    raw_response
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .filter(|chunk| *chunk != "[DONE]")
+        .filter_map(extract_text_part)
+        .last()
+}
+
+fn extract_text_part(json_line: &str) -> Option<String> {
+    let key = "\"parts\":[\"";
+    let start = json_line.find(key)? + key.len();
+    let rest = &json_line[start..];
+    let end = rest.find("\"]")?;
+    let text = &rest[..end];
+    let text = text
+        .replace("\\n", "\n")
+        .replace("\\r", "\r")
+        .replace("\\\"", "\"")
+        .replace("\\\\", "\\");
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 async fn not_found() -> impl IntoResponse {
@@ -123,4 +164,15 @@ async fn not_found() -> impl IntoResponse {
             error: "Not found".to_string(),
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_sse_answer;
+
+    #[test]
+    fn parses_sse_parts_field() {
+        let input = "data: {\"message\":{\"content\":{\"parts\":[\"hello\"]}}}\ndata: [DONE]";
+        assert_eq!(parse_sse_answer(input).as_deref(), Some("hello"));
+    }
 }
