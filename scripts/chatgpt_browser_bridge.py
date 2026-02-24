@@ -4,10 +4,9 @@ import sys
 
 
 def main() -> int:
-    prompt = os.environ.get("CHATGPT_PROMPT", "").strip()
+    prompt = os.environ.get("CHATGPT_PROMPT", "Hello from wrapper-service").strip()
     if not prompt:
-        print("CHATGPT_PROMPT is empty", file=sys.stderr)
-        return 2
+        prompt = "Hello from wrapper-service"
 
     try:
         from playwright.sync_api import sync_playwright
