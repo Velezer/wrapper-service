@@ -33,15 +33,14 @@ def app_state_from_env() -> AppState:
 
 
 def format_browser_command_error(stderr: str, status: str) -> str:
+    install_hint = "Install Playwright with `pip install playwright` and then run `python3 -m playwright install chromium`."
+
     if not stderr:
         return f"Browser automation command failed with status {status}"
 
-    if "playwright import failed" in stderr and "No module named 'playwright'" in stderr:
-        return (
-            "Browser automation command failed: "
-            f"{stderr}. Install Playwright with `pip install playwright` and then run "
-            "`python3 -m playwright install chromium`."
-        )
+    if "playwright import failed" in stderr:
+        clean_stderr = stderr.rstrip(".")
+        return f"Browser automation command failed: {clean_stderr}. {install_hint}"
 
     return f"Browser automation command failed: {stderr}"
 
