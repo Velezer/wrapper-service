@@ -99,15 +99,7 @@ async fn ask_via_browser(prompt: &str, state: &AppState) -> Result<String, Strin
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let message = if stderr.is_empty() {
-            format!(
-                "Browser automation command failed with status {}",
-                output.status
-            )
-        } else {
-            format!("Browser automation command failed: {stderr}")
-        };
-        return Err(message);
+        return Err(format_browser_command_error(&stderr, output.status.to_string()));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -117,6 +109,22 @@ async fn ask_via_browser(prompt: &str, state: &AppState) -> Result<String, Strin
     }
 
     Ok(answer.to_string())
+}
+
+fn format_browser_command_error(stderr: &str, status: String) -> String {
+    if stderr.is_empty() {
+        return format!("Browser automation command failed with status {status}");
+    }
+
+    if stderr.contains("playwright import failed")
+        && stderr.contains("No module named 'playwright'")
+    {
+        return format!(
+            "Browser automation command failed: {stderr}. Install Playwright with `pip install playwright` and then run `python3 -m playwright install chromium`."
+        );
+    }
+
+    format!("Browser automation command failed: {stderr}")
 }
 
 async fn not_found() -> impl IntoResponse {
@@ -130,7 +138,7 @@ async fn not_found() -> impl IntoResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::app_state_from_env;
+    use super::{app_state_from_env, format_browser_command_error};
 
     #[test]
     fn uses_browser_command_by_default() {
@@ -139,5 +147,16 @@ mod tests {
             state.chatgpt_browser_cmd,
             "python3 scripts/chatgpt_browser_bridge.py"
         );
+    }
+
+    #[test]
+    fn playwright_import_errors_include_install_hint() {
+        let err = format_browser_command_error(
+            "playwright import failed: No module named 'playwright'",
+            "exit status: 3".to_string(),
+        );
+
+        assert!(err.contains("pip install playwright"));
+        assert!(err.contains("python3 -m playwright install chromium"));
     }
 }
