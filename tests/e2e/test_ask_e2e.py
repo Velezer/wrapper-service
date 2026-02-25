@@ -2,6 +2,7 @@ import os
 import socket
 import subprocess
 import time
+from pathlib import Path
 
 import httpx
 
@@ -25,20 +26,31 @@ def _wait_until_ready(base_url: str, timeout_s: float = 10.0) -> None:
     raise TimeoutError("wrapper-service did not become ready in time")
 
 
-def test_post_ask_e2e_returns_answer_without_mocking():
+def _make_echo_bridge_script(tmp_path: Path) -> Path:
+    script = tmp_path / "echo_bridge.py"
+    script.write_text(
+        "import os\n"
+        "print('E2E:' + os.environ['CHATGPT_PROMPT'])\n",
+        encoding="utf-8",
+    )
+    return script
+
+
+def test_post_ask_e2e_returns_answer_without_mocking(tmp_path: Path):
     port = _free_port()
     base_url = f"http://127.0.0.1:{port}"
+    bridge_script = _make_echo_bridge_script(tmp_path)
 
-    # No monkeypatching: this command is actually executed by app.py through subprocess.run.
-    cmd = "python3 -c \"import os; print('E2E:' + os.environ['CHATGPT_PROMPT'])\""
+    # No monkeypatching: this bridge command is actually executed by app.py through subprocess.run.
     env = {
         **os.environ,
-        "CHATGPT_BROWSER_CMD": cmd,
+        "PORT": str(port),
+        "CHATGPT_BROWSER_CMD": f"python3 {bridge_script}",
         "GPT_TIMEOUT_MS": "3000",
     }
 
     server = subprocess.Popen(
-        ["python3", "-m", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", str(port)],
+        ["python3", "app.py"],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
