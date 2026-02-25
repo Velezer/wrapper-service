@@ -52,8 +52,8 @@ def test_post_ask_e2e_returns_answer_without_mocking(tmp_path: Path):
     server = subprocess.Popen(
         ["python3", "app.py"],
         env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         text=True,
     )
 

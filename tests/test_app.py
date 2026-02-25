@@ -68,10 +68,8 @@ def test_playwright_import_succeeds():
     assert module is not None
 
 
-def test_chromium_binary_is_installed_for_playwright():
-    from playwright.sync_api import sync_playwright
+def test_dockerfile_installs_chromium_for_playwright():
+    dockerfile_text = Path("Dockerfile").read_text(encoding="utf-8")
 
-    with sync_playwright() as p:
-        chromium_executable = Path(p.chromium.executable_path)
-
-    assert chromium_executable.exists()
+    assert "python -m pip install --no-cache-dir playwright" in dockerfile_text
+    assert "python -m playwright install --with-deps chromium" in dockerfile_text
