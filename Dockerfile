@@ -19,7 +19,8 @@ RUN apt-get update \
 
 RUN python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir playwright \
-    && /opt/venv/bin/playwright install --with-deps chromium
+    && /opt/venv/bin/playwright install --with-deps chromium \
+    && /opt/venv/bin/python -c "from playwright.sync_api import sync_playwright"
 
 COPY --from=builder /app/target/release/wrapper-service /usr/local/bin/wrapper-service
 COPY --from=builder /app/scripts ./scripts
