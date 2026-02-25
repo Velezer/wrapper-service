@@ -14,14 +14,21 @@ RUN cargo build --release
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
 
+# Install system dependencies
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 python3-pip bash ca-certificates \
+    && apt-get install -y --no-install-recommends python3 python3-venv python3-pip bash ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir playwright \
-    && python3 -m playwright install chromium \
-    && python3 -c "from playwright.sync_api import sync_playwright"
+# Create virtual environment and install Playwright
+RUN python3 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --upgrade pip \
+    && /opt/venv/bin/pip install --no-cache-dir playwright \
+    && /opt/venv/bin/python -m playwright install chromium
 
+# Add venv to PATH
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy Rust binaries and scripts
 COPY --from=builder /app/target/release/wrapper-service /usr/local/bin/wrapper-service
 COPY --from=builder /app/scripts ./scripts
 
