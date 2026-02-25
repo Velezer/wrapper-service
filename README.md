@@ -2,6 +2,9 @@
 
 A FastAPI wrapper service exposing `POST /ask` and forwarding prompts to the browser bridge script.
 
+The browser bridge now self-heals missing Playwright runtime dependencies by attempting to install
+the Python package and Chromium browser on first run when they are missing.
+
 ## Run locally
 
 ```bash

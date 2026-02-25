@@ -1,6 +1,32 @@
 #!/usr/bin/env python3
 import os
+import subprocess
 import sys
+
+
+def _run_checked(cmd: list[str], label: str) -> None:
+    """Run a command and raise RuntimeError with stderr when it fails."""
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        stderr = result.stderr.strip() or result.stdout.strip() or "unknown error"
+        raise RuntimeError(f"{label} failed: {stderr}")
+
+
+def _ensure_playwright_ready():
+    """Return sync_playwright, attempting one-time bootstrap when needed."""
+    try:
+        from playwright.sync_api import sync_playwright
+
+        return sync_playwright
+    except Exception:  # noqa: BLE001
+        python = sys.executable or "python3"
+        _run_checked([python, "-m", "pip", "install", "playwright"], "pip install playwright")
+        _run_checked([python, "-m", "playwright", "install-deps", "chromium"], "playwright install-deps chromium")
+        _run_checked([python, "-m", "playwright", "install", "chromium"], "playwright install chromium")
+
+    from playwright.sync_api import sync_playwright
+
+    return sync_playwright
 
 
 def main() -> int:
@@ -10,18 +36,35 @@ def main() -> int:
         return 2
 
     try:
-        from playwright.sync_api import sync_playwright
+        sync_playwright = _ensure_playwright_ready()
     except Exception as exc:  # noqa: BLE001
-        # Playwright is expected to be preinstalled in the runtime image.
-        # Keep this error shape stable so the Rust wrapper can provide a hint.
         reason = str(exc).strip() or "unknown import error"
         print(f"playwright import failed: {reason}", file=sys.stderr)
         return 3
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context()
+            try:
+                browser = p.chromium.launch(headless=True)
+            except Exception as exc:  # noqa: BLE001
+                msg = str(exc)
+                python = sys.executable or "python3"
+
+                if "Host system is missing dependencies" in msg:
+                    _run_checked(
+                        [python, "-m", "playwright", "install-deps", "chromium"],
+                        "playwright install-deps chromium",
+                    )
+                    browser = p.chromium.launch(headless=True)
+                elif "Executable doesn't exist" in msg:
+                    _run_checked(
+                        [python, "-m", "playwright", "install", "chromium"],
+                        "playwright install chromium",
+                    )
+                    browser = p.chromium.launch(headless=True)
+                else:
+                    raise
+            context = browser.new_context(ignore_https_errors=True)
             page = context.new_page()
             page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=45000)
             page.wait_for_timeout(1500)
