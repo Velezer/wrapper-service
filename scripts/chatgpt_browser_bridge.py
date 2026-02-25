@@ -12,7 +12,10 @@ def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
     except Exception as exc:  # noqa: BLE001
-        print(f"playwright import failed: {exc}", file=sys.stderr)
+        # Playwright is expected to be preinstalled in the runtime image.
+        # Keep this error shape stable so the Rust wrapper can provide a hint.
+        reason = str(exc).strip() or "unknown import error"
+        print(f"playwright import failed: {reason}", file=sys.stderr)
         return 3
 
     try:
