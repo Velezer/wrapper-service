@@ -1,6 +1,6 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
-use std::{env, process::Stdio, sync::Arc};
+use std::{env, path::Path, process::Stdio, sync::Arc};
 use tokio::time::{timeout, Duration};
 
 #[derive(Clone)]
@@ -31,8 +31,20 @@ pub fn app_state_from_env() -> Arc<AppState> {
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(20_000),
         chatgpt_browser_cmd: env::var("CHATGPT_BROWSER_CMD")
-            .unwrap_or_else(|_| "python3 scripts/chatgpt_browser_bridge.py".to_string()),
+            .unwrap_or_else(|_| default_chatgpt_browser_cmd()),
     })
+}
+
+fn default_chatgpt_browser_cmd() -> String {
+    default_chatgpt_browser_cmd_with_venv(Path::new("/opt/venv/bin/python").exists())
+}
+
+fn default_chatgpt_browser_cmd_with_venv(venv_python_exists: bool) -> String {
+    if venv_python_exists {
+        "/opt/venv/bin/python scripts/chatgpt_browser_bridge.py".to_string()
+    } else {
+        "python3 scripts/chatgpt_browser_bridge.py".to_string()
+    }
 }
 
 pub fn server_port_from_env() -> u16 {
@@ -138,15 +150,26 @@ async fn not_found() -> impl IntoResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::{app_state_from_env, format_browser_command_error};
+    use super::{
+        app_state_from_env, default_chatgpt_browser_cmd_with_venv, format_browser_command_error,
+    };
 
     #[test]
     fn uses_browser_command_by_default() {
         let state = app_state_from_env();
-        assert_eq!(
-            state.chatgpt_browser_cmd,
-            "python3 scripts/chatgpt_browser_bridge.py"
-        );
+        assert!(!state.chatgpt_browser_cmd.is_empty());
+    }
+
+    #[test]
+    fn uses_venv_python_if_present() {
+        let cmd = default_chatgpt_browser_cmd_with_venv(true);
+        assert_eq!(cmd, "/opt/venv/bin/python scripts/chatgpt_browser_bridge.py");
+    }
+
+    #[test]
+    fn uses_system_python_when_venv_is_missing() {
+        let cmd = default_chatgpt_browser_cmd_with_venv(false);
+        assert_eq!(cmd, "python3 scripts/chatgpt_browser_bridge.py");
     }
 
     #[test]
