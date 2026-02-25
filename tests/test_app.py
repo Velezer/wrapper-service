@@ -1,4 +1,6 @@
+import importlib
 import subprocess
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -59,3 +61,17 @@ def test_playwright_import_error_includes_install_hint():
 
     assert "pip install playwright" in err
     assert "python3 -m playwright install chromium" in err
+
+
+def test_playwright_import_succeeds():
+    module = importlib.import_module("playwright.sync_api")
+    assert module is not None
+
+
+def test_chromium_binary_is_installed_for_playwright():
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        chromium_executable = Path(p.chromium.executable_path)
+
+    assert chromium_executable.exists()
