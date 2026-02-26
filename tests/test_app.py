@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app import AppState, create_app, format_browser_command_error
+from app import MAX_TIMEOUT_MS, AppState, app_state_from_env, ask_via_browser, create_app, format_browser_command_error
 
 
 def test_post_ask_success_path_returns_answer(monkeypatch):
@@ -63,6 +63,33 @@ def test_playwright_import_error_includes_install_hint():
 
     assert "pip install playwright" in err
     assert "python3 -m playwright install chromium" in err
+
+
+def test_app_state_from_env_caps_timeout_at_3_minutes(monkeypatch):
+    monkeypatch.setenv("GPT_TIMEOUT_MS", "999999")
+    monkeypatch.setenv("CHATGPT_BROWSER_CMD", "echo hello")
+
+    state = app_state_from_env()
+
+    assert state.timeout_ms == MAX_TIMEOUT_MS
+
+
+def test_timeout_error_includes_debug_details(monkeypatch):
+    state = AppState(timeout_ms=2000, chatgpt_browser_cmd="python3 scripts/chatgpt_browser_bridge.py")
+
+    def fake_run(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(cmd="bridge", timeout=2.0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        ask_via_browser("hello", state)
+
+    msg = str(exc_info.value)
+    assert "timeout after 2.0s" in msg
+    assert "max 180.0s" in msg
+    assert "CHATGPT_PROMPT" in msg
+    assert "stderr logs" in msg
 
 
 def test_playwright_import_succeeds():
