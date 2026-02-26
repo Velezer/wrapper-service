@@ -8,7 +8,6 @@ RUN apt-get update \
         curl \
         fonts-liberation \
         fonts-unifont \
-        fonts-ubuntu \
         libasound2 \
         libatk-bridge2.0-0 \
         libatk1.0-0 \
