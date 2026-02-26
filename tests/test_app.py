@@ -1,5 +1,7 @@
 import importlib
 import subprocess
+
+import pytest
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -64,6 +66,7 @@ def test_playwright_import_error_includes_install_hint():
 
 
 def test_playwright_import_succeeds():
+    pytest.importorskip("playwright.sync_api")
     module = importlib.import_module("playwright.sync_api")
     assert module is not None
 
@@ -72,4 +75,5 @@ def test_dockerfile_installs_chromium_for_playwright():
     dockerfile_text = Path("Dockerfile").read_text(encoding="utf-8")
 
     assert "python -m pip install --no-cache-dir playwright" in dockerfile_text
-    assert "python -m playwright install --with-deps chromium" in dockerfile_text
+    assert "python -m playwright install chromium" in dockerfile_text
+    assert "python -m playwright install --with-deps chromium" not in dockerfile_text

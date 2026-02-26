@@ -12,6 +12,14 @@ def _run_checked(cmd: list[str], label: str) -> None:
         raise RuntimeError(f"{label} failed: {stderr}")
 
 
+def _run_best_effort(cmd: list[str], label: str) -> None:
+    """Run a command and continue when it fails, printing a warning."""
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        stderr = result.stderr.strip() or result.stdout.strip() or "unknown error"
+        print(f"warning: {label} failed: {stderr}", file=sys.stderr)
+
+
 def _ensure_playwright_ready():
     """Return sync_playwright, attempting one-time bootstrap when needed."""
     try:
@@ -21,7 +29,7 @@ def _ensure_playwright_ready():
     except Exception:  # noqa: BLE001
         python = sys.executable or "python3"
         _run_checked([python, "-m", "pip", "install", "playwright"], "pip install playwright")
-        _run_checked([python, "-m", "playwright", "install-deps", "chromium"], "playwright install-deps chromium")
+        _run_best_effort([python, "-m", "playwright", "install-deps", "chromium"], "playwright install-deps chromium")
         _run_checked([python, "-m", "playwright", "install", "chromium"], "playwright install chromium")
 
     from playwright.sync_api import sync_playwright
@@ -51,7 +59,7 @@ def main() -> int:
                 python = sys.executable or "python3"
 
                 if "Host system is missing dependencies" in msg:
-                    _run_checked(
+                    _run_best_effort(
                         [python, "-m", "playwright", "install-deps", "chromium"],
                         "playwright install-deps chromium",
                     )
