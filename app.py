@@ -10,6 +10,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 
+MAX_TIMEOUT_MS = 180_000
+
+
 @dataclass
 class AppState:
     timeout_ms: int
@@ -27,7 +30,8 @@ def default_chatgpt_browser_cmd() -> str:
 
 
 def app_state_from_env() -> AppState:
-    timeout_ms = int(os.getenv("GPT_TIMEOUT_MS", "20000"))
+    raw_timeout_ms = int(os.getenv("GPT_TIMEOUT_MS", str(MAX_TIMEOUT_MS)))
+    timeout_ms = max(1, min(raw_timeout_ms, MAX_TIMEOUT_MS))
     cmd = os.getenv("CHATGPT_BROWSER_CMD", default_chatgpt_browser_cmd())
     return AppState(timeout_ms=timeout_ms, chatgpt_browser_cmd=cmd)
 
@@ -56,7 +60,14 @@ def ask_via_browser(prompt: str, state: AppState) -> str:
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("ChatGPT browser automation timeout") from exc
+        timeout_s = state.timeout_ms / 1000
+        command = state.chatgpt_browser_cmd
+        raise RuntimeError(
+            "ChatGPT browser automation timeout "
+            f"after {timeout_s:.1f}s (max 180.0s). "
+            f"command={command!r}. "
+            "Try rerunning the bridge command directly with CHATGPT_PROMPT set and inspect stderr logs."
+        ) from exc
     except OSError as exc:
         raise RuntimeError(f"Failed to start browser automation command: {exc}") from exc
 
