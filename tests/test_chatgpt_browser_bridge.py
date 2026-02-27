@@ -4,8 +4,9 @@ from scripts import chatgpt_browser_bridge
 
 
 class _FakeLocator:
-    def __init__(self, should_find: bool):
+    def __init__(self, should_find: bool, fill_raises: bool = False):
         self._should_find = should_find
+        self._fill_raises = fill_raises
         self.first = self
         self.actions: list[tuple[str, str | int | None]] = []
 
@@ -13,9 +14,6 @@ class _FakeLocator:
         if not self._should_find:
             raise RuntimeError("not found")
         self.actions.append(("wait_for", timeout))
-
-    def evaluate(self, _script: str):
-        return "DIV"
 
     def click(self):
         self.actions.append(("click", None))
@@ -25,6 +23,8 @@ class _FakeLocator:
 
     def fill(self, value: str):
         self.actions.append(("fill", value))
+        if self._fill_raises:
+            raise RuntimeError("fill not supported")
 
     def press(self, value: str):
         self.actions.append(("press", value))
@@ -76,8 +76,17 @@ def test_wait_for_composer_tries_multiple_selectors_and_returns_first_match():
     assert composer is page.locators['div[contenteditable="true"][data-id="root"]']
 
 
-def test_submit_prompt_uses_typing_for_non_textarea():
+def test_submit_prompt_prefers_fill_when_available():
     locator = _FakeLocator(True)
+
+    chatgpt_browser_bridge._submit_prompt(locator, "hello")
+
+    assert ("fill", "hello") in locator.actions
+    assert ("press", "Enter") in locator.actions
+
+
+def test_submit_prompt_falls_back_to_typing_when_fill_fails():
+    locator = _FakeLocator(True, fill_raises=True)
 
     chatgpt_browser_bridge._submit_prompt(locator, "hello")
 

@@ -81,6 +81,28 @@ FAKE_CHATGPT_PLAINTEXT_ONLY_COMPOSER_HTML = textwrap.dedent(
     """
 )
 
+FAKE_CHATGPT_ASK_LABEL_COMPOSER_HTML = textwrap.dedent(
+    """
+    <!doctype html>
+    <html>
+      <body>
+        <div role="textbox" aria-label="Ask anything" contenteditable="true"></div>
+        <script>
+          const composer = document.querySelector('[role="textbox"]');
+          composer.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              const reply = document.createElement("div");
+              reply.setAttribute("data-message-author-role", "assistant");
+              reply.textContent = `echo: ${composer.textContent}`;
+              document.body.appendChild(reply);
+            }
+          });
+        </script>
+      </body>
+    </html>
+    """
+)
 
 
 def _free_port() -> int:
@@ -275,6 +297,51 @@ def test_post_ask_e2e_supports_plaintext_only_prompt_textarea_selector():
         _wait_until_ready(wrapper_base_url)
 
         prompt = "hello plaintext-only selector"
+        response = httpx.post(
+            f"{wrapper_base_url}/ask",
+            json={"prompt": prompt},
+            timeout=30.0,
+        )
+
+        if response.status_code == 502:
+            error = response.json().get("error", "")
+            if "playwright is unavailable" in error or "Executable doesn't exist" in error:
+                pytest.skip(f"Playwright/Chromium unavailable in environment: {error}")
+
+        assert response.status_code == 200
+        assert response.json() == {"answer": f"echo: {prompt}"}
+    finally:
+        wrapper_server.terminate()
+        wrapper_server.join(timeout=5)
+        fake_chatgpt_server.terminate()
+        fake_chatgpt_server.join(timeout=5)
+
+
+def test_post_ask_e2e_supports_ask_aria_label_selector():
+    fake_chatgpt_port = _free_port()
+    fake_chatgpt_url = f"http://127.0.0.1:{fake_chatgpt_port}/"
+
+    fake_chatgpt_server = Process(
+        target=_run_fake_chatgpt_server,
+        args=(fake_chatgpt_port, FAKE_CHATGPT_ASK_LABEL_COMPOSER_HTML),
+        daemon=True,
+    )
+    fake_chatgpt_server.start()
+
+    wrapper_port = _free_port()
+    wrapper_base_url = f"http://127.0.0.1:{wrapper_port}"
+    wrapper_server = Process(
+        target=_run_server,
+        args=(wrapper_port, fake_chatgpt_url),
+        daemon=True,
+    )
+    wrapper_server.start()
+
+    try:
+        _wait_until_ready(fake_chatgpt_url.rstrip("/"))
+        _wait_until_ready(wrapper_base_url)
+
+        prompt = "hello ask label selector"
         response = httpx.post(
             f"{wrapper_base_url}/ask",
             json={"prompt": prompt},

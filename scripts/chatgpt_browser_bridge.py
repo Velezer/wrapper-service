@@ -8,17 +8,25 @@ import time
 COMPOSER_SELECTOR_CANDIDATES = (
     'textarea#prompt-textarea',
     'div#prompt-textarea',
+    '[id^="prompt-textarea"]',
     'div#prompt-textarea[contenteditable="true"]',
     'div#prompt-textarea[contenteditable]',
     'textarea[aria-label*="Message"]',
+    'textarea[aria-label*="Ask"]',
     'div[contenteditable="true"][aria-label*="Message"]',
+    'div[contenteditable="true"][aria-label*="Ask"]',
+    'div[contenteditable="plaintext-only"][aria-label*="Ask"]',
     'textarea[placeholder*="Message"]',
+    'textarea[placeholder*="Ask"]',
     'div[contenteditable="true"][placeholder*="Message"]',
+    'div[contenteditable="true"][placeholder*="Ask"]',
     'textarea[data-id="root"]',
     'div[contenteditable="true"][data-id="root"]',
     'div[contenteditable="plaintext-only"][role="textbox"]',
-    'div.ProseMirror[contenteditable="true"]',
     'div[contenteditable="true"][role="textbox"]',
+    'div[role="textbox"][aria-label*="Ask"]',
+    'div.ProseMirror[contenteditable="true"]',
+    'textarea',
 )
 
 
@@ -80,10 +88,9 @@ def _wait_for_composer(page, timeout_ms: int):
 
 
 def _submit_prompt(composer, prompt: str) -> None:
-    tag_name = composer.evaluate("(node) => node.tagName")
-    if tag_name and str(tag_name).upper() == "TEXTAREA":
+    try:
         composer.fill(prompt)
-    else:
+    except Exception:  # noqa: BLE001
         composer.click()
         composer.type(prompt)
     composer.press("Enter")
