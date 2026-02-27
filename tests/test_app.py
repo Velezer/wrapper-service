@@ -97,5 +97,6 @@ def test_dockerfile_installs_chromium_for_playwright():
     assert "python -m playwright install --with-deps chromium" not in dockerfile_text
 
 
-def test_composer_selectors_include_prompt_textarea():
+def test_composer_selectors_include_prompt_textarea_variants():
     assert "textarea#prompt-textarea" in app_module.COMPOSER_SELECTOR_CANDIDATES
+    assert 'div#prompt-textarea[contenteditable="true"]' in app_module.COMPOSER_SELECTOR_CANDIDATES
