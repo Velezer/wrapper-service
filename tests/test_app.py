@@ -95,3 +95,7 @@ def test_dockerfile_installs_chromium_for_playwright():
     assert "python -m pip install --no-cache-dir playwright" in dockerfile_text
     assert "python -m playwright install chromium" in dockerfile_text
     assert "python -m playwright install --with-deps chromium" not in dockerfile_text
+
+
+def test_composer_selectors_include_prompt_textarea():
+    assert "textarea#prompt-textarea" in app_module.COMPOSER_SELECTOR_CANDIDATES

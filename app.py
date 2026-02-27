@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 
 from fastapi import FastAPI
@@ -10,6 +11,8 @@ from pydantic import BaseModel
 MAX_TIMEOUT_MS = 180_000
 DEFAULT_CHATGPT_URL = "https://chatgpt.com/"
 COMPOSER_SELECTOR_CANDIDATES = (
+    'textarea#prompt-textarea',
+    'textarea[aria-label*="Message"]',
     'textarea[placeholder*="Message"]',
     'textarea[data-id="root"]',
     'div[contenteditable="true"][data-id="root"]',
@@ -73,16 +76,22 @@ def ask_via_browser(prompt: str, state: AppState) -> str:
 
 
 def _wait_for_composer(page, timeout_ms: int):
-    per_selector_timeout = max(1_000, timeout_ms // len(COMPOSER_SELECTOR_CANDIDATES))
+    deadline = time.monotonic() + (timeout_ms / 1000)
     last_error = None
 
-    for selector in COMPOSER_SELECTOR_CANDIDATES:
-        candidate = page.locator(selector).first
-        try:
-            candidate.wait_for(timeout=per_selector_timeout)
-            return candidate
-        except Exception as exc:  # noqa: BLE001
-            last_error = exc
+    while time.monotonic() < deadline:
+        remaining_ms = max(200, int((deadline - time.monotonic()) * 1000))
+        per_selector_timeout = max(200, min(1_500, remaining_ms // len(COMPOSER_SELECTOR_CANDIDATES)))
+
+        for selector in COMPOSER_SELECTOR_CANDIDATES:
+            candidate = page.locator(selector).first
+            try:
+                candidate.wait_for(state="visible", timeout=per_selector_timeout)
+                return candidate
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+
+        page.wait_for_timeout(100)
 
     raise RuntimeError(
         "Could not find ChatGPT composer using known selectors: "

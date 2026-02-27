@@ -16,6 +16,7 @@ python app.py
 
 - `GPT_TIMEOUT_MS` controls the maximum time to wait for the assistant response (capped at 180000ms).
 - `CHATGPT_URL` controls the target URL for browser navigation (defaults to `https://chatgpt.com/`).
+- Composer discovery is resilient to UI changes and tries multiple selectors (including `textarea#prompt-textarea`) until timeout.
 
 ## Test
 
