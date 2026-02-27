@@ -99,4 +99,7 @@ def test_dockerfile_installs_chromium_for_playwright():
 
 def test_composer_selectors_include_prompt_textarea_variants():
     assert "textarea#prompt-textarea" in app_module.COMPOSER_SELECTOR_CANDIDATES
+    assert "div#prompt-textarea" in app_module.COMPOSER_SELECTOR_CANDIDATES
     assert 'div#prompt-textarea[contenteditable="true"]' in app_module.COMPOSER_SELECTOR_CANDIDATES
+    assert 'div[contenteditable="plaintext-only"][role="textbox"]' in app_module.COMPOSER_SELECTOR_CANDIDATES
+    assert 'div.ProseMirror[contenteditable="true"]' in app_module.COMPOSER_SELECTOR_CANDIDATES
