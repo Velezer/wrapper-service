@@ -9,6 +9,12 @@ from pydantic import BaseModel
 
 MAX_TIMEOUT_MS = 180_000
 DEFAULT_CHATGPT_URL = "https://chatgpt.com/"
+COMPOSER_SELECTOR_CANDIDATES = (
+    'textarea[placeholder*="Message"]',
+    'textarea[data-id="root"]',
+    'div[contenteditable="true"][data-id="root"]',
+    'div[contenteditable="true"][role="textbox"]',
+)
 
 
 @dataclass
@@ -48,10 +54,8 @@ def ask_via_browser(prompt: str, state: AppState) -> str:
             page.goto(state.chatgpt_url, wait_until="domcontentloaded", timeout=45_000)
             page.wait_for_timeout(1500)
 
-            composer = page.locator('textarea[placeholder*="Message"], textarea[data-id="root"]')
-            composer.first.wait_for(timeout=30_000)
-            composer.first.fill(prompt)
-            composer.first.press("Enter")
+            composer = _wait_for_composer(page, timeout_ms=30_000)
+            _submit_prompt(composer, prompt)
 
             response_blocks = page.locator('[data-message-author-role="assistant"]')
             response_blocks.last.wait_for(timeout=timeout_ms)
@@ -66,6 +70,34 @@ def ask_via_browser(prompt: str, state: AppState) -> str:
         raise RuntimeError("Browser automation did not return an answer")
 
     return text
+
+
+def _wait_for_composer(page, timeout_ms: int):
+    per_selector_timeout = max(1_000, timeout_ms // len(COMPOSER_SELECTOR_CANDIDATES))
+    last_error = None
+
+    for selector in COMPOSER_SELECTOR_CANDIDATES:
+        candidate = page.locator(selector).first
+        try:
+            candidate.wait_for(timeout=per_selector_timeout)
+            return candidate
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+
+    raise RuntimeError(
+        "Could not find ChatGPT composer using known selectors: "
+        f"{', '.join(COMPOSER_SELECTOR_CANDIDATES)}"
+    ) from last_error
+
+
+def _submit_prompt(composer, prompt: str) -> None:
+    tag_name = composer.evaluate("(node) => node.tagName")
+    if tag_name and str(tag_name).upper() == "TEXTAREA":
+        composer.fill(prompt)
+    else:
+        composer.click()
+        composer.type(prompt)
+    composer.press("Enter")
 
 
 def create_app(state: AppState | None = None) -> FastAPI:

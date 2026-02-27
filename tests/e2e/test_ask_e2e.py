@@ -53,3 +53,26 @@ def test_post_ask_e2e_returns_error_when_browser_is_unavailable():
     finally:
         server.terminate()
         server.join(timeout=5)
+
+
+def test_post_ask_e2e_rejects_blank_prompt_without_browser_call():
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
+
+    server = Process(target=_run_server, args=(port,), daemon=True)
+    server.start()
+
+    try:
+        _wait_until_ready(base_url)
+
+        response = httpx.post(
+            f"{base_url}/ask",
+            json={"prompt": "   "},
+            timeout=10.0,
+        )
+
+        assert response.status_code == 400
+        assert response.json() == {"error": 'Field "prompt" must be a non-empty string'}
+    finally:
+        server.terminate()
+        server.join(timeout=5)
