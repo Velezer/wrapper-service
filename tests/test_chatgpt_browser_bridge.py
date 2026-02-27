@@ -33,19 +33,11 @@ class _FakeLocator:
 class _FakePage:
     def __init__(self):
         self.locators = {
-            'textarea#prompt-textarea': _FakeLocator(False),
-            'div#prompt-textarea[contenteditable="true"]': _FakeLocator(False),
-            'textarea[aria-label*="Message"]': _FakeLocator(False),
-            'div[contenteditable="true"][aria-label*="Message"]': _FakeLocator(False),
-            'textarea[placeholder*="Message"]': _FakeLocator(False),
-            'div[contenteditable="true"][placeholder*="Message"]': _FakeLocator(False),
-            'textarea[data-id="root"]': _FakeLocator(False),
             'div[contenteditable="true"][data-id="root"]': _FakeLocator(True),
-            'div[contenteditable="true"][role="textbox"]': _FakeLocator(False),
         }
 
     def locator(self, selector: str):
-        return self.locators[selector]
+        return self.locators.get(selector, _FakeLocator(False))
 
     def wait_for_timeout(self, _timeout: int):
         return None
