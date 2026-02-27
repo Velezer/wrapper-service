@@ -1,9 +1,6 @@
 # wrapper-service (Python)
 
-A FastAPI wrapper service exposing `POST /ask` and forwarding prompts to the browser bridge script.
-
-The browser bridge now self-heals missing Playwright runtime dependencies by attempting to install
-the Python package and Chromium browser on first run when they are missing.
+A FastAPI wrapper service exposing `POST /ask` and forwarding prompts directly through Playwright browser automation.
 
 ## Run locally
 
@@ -11,8 +8,14 @@ the Python package and Chromium browser on first run when they are missing.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+python -m playwright install chromium
 python app.py
 ```
+
+## Configuration
+
+- `GPT_TIMEOUT_MS` controls the maximum time to wait for the assistant response (capped at 180000ms).
+- `CHATGPT_URL` controls the target URL for browser navigation (defaults to `https://chatgpt.com/`).
 
 ## Test
 
