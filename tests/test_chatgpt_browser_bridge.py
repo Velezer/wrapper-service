@@ -9,7 +9,7 @@ class _FakeLocator:
         self.first = self
         self.actions: list[tuple[str, str | int | None]] = []
 
-    def wait_for(self, timeout: int):
+    def wait_for(self, timeout: int, state: str | None = None):
         if not self._should_find:
             raise RuntimeError("not found")
         self.actions.append(("wait_for", timeout))
@@ -33,6 +33,8 @@ class _FakeLocator:
 class _FakePage:
     def __init__(self):
         self.locators = {
+            'textarea#prompt-textarea': _FakeLocator(False),
+            'textarea[aria-label*="Message"]': _FakeLocator(False),
             'textarea[placeholder*="Message"]': _FakeLocator(False),
             'textarea[data-id="root"]': _FakeLocator(False),
             'div[contenteditable="true"][data-id="root"]': _FakeLocator(True),
@@ -41,6 +43,9 @@ class _FakePage:
 
     def locator(self, selector: str):
         return self.locators[selector]
+
+    def wait_for_timeout(self, _timeout: int):
+        return None
 
 
 def test_run_best_effort_logs_warning_when_command_fails(monkeypatch, capsys):
