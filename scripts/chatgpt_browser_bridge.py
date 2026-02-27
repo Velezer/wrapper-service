@@ -7,13 +7,17 @@ import time
 
 COMPOSER_SELECTOR_CANDIDATES = (
     'textarea#prompt-textarea',
+    'div#prompt-textarea',
     'div#prompt-textarea[contenteditable="true"]',
+    'div#prompt-textarea[contenteditable]',
     'textarea[aria-label*="Message"]',
     'div[contenteditable="true"][aria-label*="Message"]',
     'textarea[placeholder*="Message"]',
     'div[contenteditable="true"][placeholder*="Message"]',
     'textarea[data-id="root"]',
     'div[contenteditable="true"][data-id="root"]',
+    'div[contenteditable="plaintext-only"][role="textbox"]',
+    'div.ProseMirror[contenteditable="true"]',
     'div[contenteditable="true"][role="textbox"]',
 )
 
