@@ -102,4 +102,6 @@ def test_composer_selectors_include_prompt_textarea_variants():
     assert "div#prompt-textarea" in app_module.COMPOSER_SELECTOR_CANDIDATES
     assert 'div#prompt-textarea[contenteditable="true"]' in app_module.COMPOSER_SELECTOR_CANDIDATES
     assert 'div[contenteditable="plaintext-only"][role="textbox"]' in app_module.COMPOSER_SELECTOR_CANDIDATES
+    assert 'div[contenteditable="true"][aria-label*="Ask"]' in app_module.COMPOSER_SELECTOR_CANDIDATES
+    assert 'div[role="textbox"][aria-label*="Ask"]' in app_module.COMPOSER_SELECTOR_CANDIDATES
     assert 'div.ProseMirror[contenteditable="true"]' in app_module.COMPOSER_SELECTOR_CANDIDATES
