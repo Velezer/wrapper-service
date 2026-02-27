@@ -4,6 +4,14 @@ import subprocess
 import sys
 
 
+COMPOSER_SELECTOR_CANDIDATES = (
+    'textarea[placeholder*="Message"]',
+    'textarea[data-id="root"]',
+    'div[contenteditable="true"][data-id="root"]',
+    'div[contenteditable="true"][role="textbox"]',
+)
+
+
 def _run_checked(cmd: list[str], label: str) -> None:
     """Run a command and raise RuntimeError with stderr when it fails."""
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -35,6 +43,34 @@ def _ensure_playwright_ready():
     from playwright.sync_api import sync_playwright
 
     return sync_playwright
+
+
+def _wait_for_composer(page, timeout_ms: int):
+    per_selector_timeout = max(1_000, timeout_ms // len(COMPOSER_SELECTOR_CANDIDATES))
+    last_error = None
+
+    for selector in COMPOSER_SELECTOR_CANDIDATES:
+        candidate = page.locator(selector).first
+        try:
+            candidate.wait_for(timeout=per_selector_timeout)
+            return candidate
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+
+    raise RuntimeError(
+        "Could not find ChatGPT composer using known selectors: "
+        f"{', '.join(COMPOSER_SELECTOR_CANDIDATES)}"
+    ) from last_error
+
+
+def _submit_prompt(composer, prompt: str) -> None:
+    tag_name = composer.evaluate("(node) => node.tagName")
+    if tag_name and str(tag_name).upper() == "TEXTAREA":
+        composer.fill(prompt)
+    else:
+        composer.click()
+        composer.type(prompt)
+    composer.press("Enter")
 
 
 def main() -> int:
@@ -77,10 +113,8 @@ def main() -> int:
             page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=45000)
             page.wait_for_timeout(1500)
 
-            composer = page.locator('textarea[placeholder*="Message"], textarea[data-id="root"]')
-            composer.first.wait_for(timeout=30000)
-            composer.first.fill(prompt)
-            composer.first.press("Enter")
+            composer = _wait_for_composer(page, timeout_ms=30000)
+            _submit_prompt(composer, prompt)
 
             response_blocks = page.locator('[data-message-author-role="assistant"]')
             response_blocks.last.wait_for(timeout=120000)
